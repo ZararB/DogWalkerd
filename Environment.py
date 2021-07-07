@@ -37,7 +37,7 @@ class Environment(object):
 
     def __init__(self):
 
-        client = p.connect(p.DIRECT) 
+        client = p.connect(p.GUI) 
         p.setTimeOut(2)
         p.setGravity(0,0,-9.8)
         self.speed = 20
