@@ -1,6 +1,6 @@
 # R2D2Escape
 
-(Docs/env.png)
+![](Docs/env.png)
 
 R2D2 Escape is a reinforcement learning environment built using the pybullet physics simulator. 
 
