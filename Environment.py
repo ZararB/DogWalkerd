@@ -1,11 +1,11 @@
-import pybullet as p 
-import pybullet_data 
 import time 
 import numpy as np 
 from math import sin, cos
 import cv2
 import matplotlib.pyplot as plt
 import pygame
+import pybullet as p 
+import pybullet_data 
 
 
 #TODO Take action for K timesteps, and sample frame after K timesteps Zarar
@@ -34,10 +34,10 @@ class Environment(object):
 
     '''
 
+
     def __init__(self):
 
-        
-        client = p.connect(p.GUI) 
+        client = p.connect(p.DIRECT) 
         p.setTimeOut(2)
         p.setGravity(0,0,-9.8)
         self.speed = 20
@@ -47,8 +47,8 @@ class Environment(object):
         self.wallColor = [1, 1, 1, 1]
         self.agent = 'r2d2.urdf'
         self.rotationSpeed = 20
-        self.max_timesteps = 10000
-        self.spawnPos = [0, 0, 1]
+        self.maxTimesteps = 500
+        self.spawnPos = self.oldPos = [0, 0, 1]
         self.spawnOrn = p.getQuaternionFromEuler([0, 0, 0])
         self.prevAction = -1
         self.forces = 100
@@ -60,20 +60,18 @@ class Environment(object):
         self.viewer = None 
         self.imgHeight = self.imgWidth = 300
         self.screen = None
-        
-        
+        self.escaped = False
+        self.flippedOver = False
         p.setAdditionalSearchPath(pybullet_data.getDataPath())
 
-
-
-    def generate_world(self, agent='r2d2.urdf', escapeLength=50, corridorLength= 5,numObstacles=10, obstacleOpeningLength=0.5,  r2d2DistanceAheadOfWall=3, seed=42):
+    def generate_world(self, agent='r2d2.urdf', escapeLength=50, corridorLength= 5,numObstacles=10, obstacleOpeningLength=1,  r2d2DistanceAheadOfWall=3, seed=42):
         
         totalLength = escapeLength + r2d2DistanceAheadOfWall
         np.random.seed(seed)
         distanceBetweenObstacles = escapeLength/numObstacles
 
         p.resetSimulation()
-        p.setGravity(0, 0, -10)
+        p.setGravity(0, 0, -9.8)
         self.planeId = p.loadURDF("plane.urdf")       
         self.r2d2Id = p.loadURDF(agent, self.spawnPos, self.spawnOrn)
 
@@ -131,6 +129,8 @@ class Environment(object):
 
         self.timestep = 0
         self.collisionDetected = False
+        self.flippedOver = False
+        self.escaped = False
         self.generate_world()
 
         for _ in range(100):
@@ -212,27 +212,12 @@ class Environment(object):
                                             controlMode = p.VELOCITY_CONTROL,
                                             targetVelocities = [-80,80],
                                             forces = [100,100])
-    
-    def getObservationZ(self):
-        '''
-        Input list(4, height, width) -> Output NpArray(height, width, 4)
-        Return stack of frames as numpy array of shape (width, height, stackSize) also normalized Rajat
-        '''
-
-        frames = self.frames[-self.frameStackSize:]
-        obs = np.zeros((self.imgWidth, self.imgHeight, self.frameStackSize))
-        
-        for i, frame in enumerate(frames):
-            obs[:,:,i] = frame
-
-        return obs
-
 
     def getObservation(self):
         '''
         Input list(num_frames, w, h, rgba) -> Output NpArray(w, h, num_frames)
         '''
-        
+    
         #frames = self.frames[-self.frameStackSize:]                                             
         frames = np.transpose(self.frames,(1,2,0))                           
         frames /= 255.0  
@@ -263,39 +248,60 @@ class Environment(object):
         return frame 
 
 
-    def getReward(self, weight=1):
+    def getReward(self, weight=0.0001):
         '''
         Calculates and returns the reward that the agent maximizes
-        '''
+        
         if not self.collisionDetected:
-            pos, orn = p.getBasePositionAndOrientation(self.r2d2Id)
-            reward = pos[0] #- self.timestep*(weight)
+            
         else:
             reward = -1
+
+        '''
+        
+        
+
+
+        if (self.collisionDetected | self.flippedOver):
+            reward = -10
+        elif self.escaped:
+            reward = 50
+        else:
+            pos, orn = p.getBasePositionAndOrientation(self.r2d2Id)
+            reward = pos[0] - self.oldPos[0] # - self.timestep*(weight)
+            self.oldPos = pos 
+
+
+            
 
         return reward 
 
 
     def isDone(self):
         '''
-        Returns True if agent completes escape (x >= 100) or if episode duration > max_episode_length or if collision is detected 
+        Returns True if agent completes escape (x >= 100) or if episode duration > max_episode_length 
+        or if collision is detected or if agent has fallen over 
         '''
         contact = False
         pos, orn = p.getBasePositionAndOrientation(self.r2d2Id)
+        orn = p.getEulerFromQuaternion(orn)
         
-
         try:
             contactPoints = np.array(p.getContactPoints(self.r2d2Id))
             contactBodyIds = contactPoints[:,2]
-            contact = any(body in contactBodyIds for body in self.walls)
+            self.collisionDetected = any(body in contactBodyIds for body in self.walls)
     
         except IndexError as e:
-            print(e)
+            #print(e)
+            pass
 
-        if contact:
-            self.collisionDetected = True
+        if pos[1] >=15:
+            self.escaped = True
 
-        if (pos[1] >= 100) | (self.timestep>=self.max_timesteps) | self.collisionDetected:
+        if abs(orn[0] > 1.5):
+            self.flippedOver = True
+
+        if self.escaped | (self.timestep>=self.maxTimesteps) | self.collisionDetected | self.flippedOver:
             done=True
         else:
             done=False

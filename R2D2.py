@@ -5,9 +5,7 @@ from tensorflow.keras.layers import Dense, Conv2D, Flatten, MaxPooling2D
 import random
 
 
-
 class R2D2:
-
     
     def __init__(self, env):
 
@@ -16,8 +14,11 @@ class R2D2:
 
         self.model = Sequential([
             Conv2D(32, 8, 4, input_shape=(self.model_input_x, self.model_input_y, 4, ), activation='relu'),
+            MaxPooling2D(2,2),
             Conv2D(64, 4, 2, activation='relu'),
+            MaxPooling2D(2,2),
             Conv2D(64, 3, 1, activation='relu'),
+            MaxPooling2D(2,2),            
             Flatten(),
             Dense(512, activation='relu'),
             Dense(4, activation='linear')
